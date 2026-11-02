@@ -207,10 +207,10 @@ if (true) {
 <h2 id="第一次徒步"><a href="#第一次徒步" class="headerlink" title="第一次徒步"></a>第一次徒步</h2><p>小试牛刀，约上了谢博和宋博一起，从迳口村的黄氏大宗祠出发，上到光明顶后从凤凰径往蠄蜍石走，其实也没多远，但是氛围很不错。</p>
 <h2 id="凤凰径–深理工到石峡岭"><a href="#凤凰径–深理工到石峡岭" class="headerlink" title="凤凰径–深理工到石峡岭"></a>凤凰径–深理工到石峡岭</h2><p>这是有史以来我有记录的单次最远距离了，徒步距离21公里左右，靠着beginner’s luck成功结束徒步。</p>
 
-<div class="gpx-card" id="gpx_mnrjnu0_wrap">
+<div class="gpx-card" id="gpx_fa2zgfo_wrap">
   <div class="gpx-header"><span class="gpx-title">📍 凤凰径--深理工到石峡岭</span></div>
-  <div id="gpx_mnrjnu0_map" class="gpx-map" style="height: 450px;"></div>
-  <div id="gpx_mnrjnu0_info" class="gpx-info">
+  <div id="gpx_fa2zgfo_map" class="gpx-map" style="height: 450px;"></div>
+  <div id="gpx_fa2zgfo_info" class="gpx-info">
     <span class="gpx-loading">⏳ 正在解析并加载轨迹数据...</span>
   </div>
 </div>
@@ -261,6 +261,14 @@ if (true) {
   font-weight: 600;
   color: #3b82f6;
 }
+.leaflet-control-layers {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+}
 [data-theme="dark"] .gpx-card {
   border-color: rgba(255, 255, 255, 0.1);
   background: #1e1e1e;
@@ -271,10 +279,48 @@ if (true) {
   border-color: rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
 }
+[data-theme="dark"] .leaflet-control-layers {
+  background: #252526 !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .leaflet-control-layers label {
+  color: #e0e0e0 !important;
+}
 </style>
 
 <script data-pjax>
 (function() {
+  // WGS-84 to GCJ-02 (Mars Coordinates) for accurate alignment on AMap
+  function wgs84ToGcj02(lat, lng) {
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+    if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lat, lng];
+    var dlat = transformLat(lng - 105.0, lat - 35.0);
+    var dlng = transformLng(lng - 105.0, lat - 35.0);
+    var radlat = (lat / 180.0) * Math.PI;
+    var magic = Math.sin(radlat);
+    magic = 1 - ee * magic * magic;
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / (((a * (1 - ee)) / (magic * sqrtmagic)) * Math.PI);
+    dlng = (dlng * 180.0) / ((a / sqrtmagic) * Math.cos(radlat) * Math.PI);
+    return [lat + dlat, lng + dlng];
+  }
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+    return ret;
+  }
+
   function loadDeps(cb) {
     if (window.L && window.L.GPX) return cb();
     window.__gpxCallbacks = window.__gpxCallbacks || [];
@@ -318,22 +364,88 @@ if (true) {
   }
 
   function renderMap() {
-    var container = document.getElementById('gpx_mnrjnu0_map');
+    var container = document.getElementById('gpx_fa2zgfo_map');
     if (!container) return;
     if (container._leaflet_id) {
       container._leaflet_id = null;
     }
 
-    var map = L.map('gpx_mnrjnu0_map', {
+    // Bing Maps TileLayer definition
+    if (!L.TileLayer.Bing) {
+      L.TileLayer.Bing = L.TileLayer.extend({
+        getTileUrl: function(coords) {
+          var quadkey = '';
+          for (var i = coords.z; i > 0; i--) {
+            var digit = 0;
+            var mask = 1 << (i - 1);
+            if ((coords.x & mask) !== 0) digit++;
+            if ((coords.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          var sub = Math.abs(coords.x + coords.y) % 4;
+          return this.options.urlPattern.replace('{s}', sub).replace('{q}', quadkey);
+        }
+      });
+      L.tileLayer.bing = function(urlPattern, options) {
+        return new L.TileLayer.Bing(null, Object.assign({ urlPattern: urlPattern }, options));
+      };
+    }
+
+    var map = L.map('gpx_fa2zgfo_map', {
       scrollWheelZoom: false,
       zoomControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    // 1. 高德街道地图 (默认)
+    var amapRoad = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图'
+    });
+
+    // 2. 高德卫星影像 + 路网标注
+    var amapSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德卫星'
+    });
+    var amapSatLabel = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18
+    });
+    var amapSatGroup = L.layerGroup([amapSat, amapSatLabel]);
+
+    // 3. 必应卫星地图
+    var bingAerial = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=129', {
+      maxZoom: 19,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 4. 必应街道地图
+    var bingRoad = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/r{q}.jpeg?g=129&mkt=zh-CN', {
+      maxZoom: 18,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 5. OpenStreetMap
+    var osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    // 默认启用高德街道图
+    amapRoad.addTo(map);
+
+    // 图层切换控件
+    var baseMaps = {
+      '🗺️ 高德街道': amapRoad,
+      '🛰️ 高德卫星': amapSatGroup,
+      '🛰️ 必应卫星': bingAerial,
+      '🗺️ 必应街道': bingRoad,
+      '🌐 OpenStreetMap': osm
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(map);
 
     new L.GPX('/gpx/20241221Outdoor_walk.gpx', {
       async: true,
@@ -351,7 +463,64 @@ if (true) {
       }
     }).on('loaded', function(e) {
       var gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [24, 24] });
+
+      var polylines = [];
+      var markers = [];
+
+      function collectLayers(target) {
+        if (target instanceof L.Polyline) {
+          polylines.push(target);
+        } else if (target instanceof L.Marker) {
+          markers.push(target);
+        } else if (target && target.eachLayer) {
+          target.eachLayer(collectLayers);
+        }
+      }
+      collectLayers(gpx);
+
+      function mapCoords(pts) {
+        if (!pts || !pts.length) return pts;
+        if (Array.isArray(pts[0])) return pts.map(mapCoords);
+        return pts.map(function(p) {
+          var c = wgs84ToGcj02(p.lat, p.lng);
+          return L.latLng(c[0], c[1], p.alt);
+        });
+      }
+
+      polylines.forEach(function(pl) {
+        pl._wgsCoords = pl.getLatLngs();
+        pl._gcjCoords = mapCoords(pl._wgsCoords);
+      });
+
+      markers.forEach(function(m) {
+        m._wgsCoord = m.getLatLng();
+        var mc = wgs84ToGcj02(m._wgsCoord.lat, m._wgsCoord.lng);
+        m._gcjCoord = L.latLng(mc[0], mc[1]);
+      });
+
+      var currentIsGcj = false;
+      function applyCoordinateSystem(isGcj) {
+        if (currentIsGcj === isGcj) return;
+        currentIsGcj = isGcj;
+        polylines.forEach(function(pl) {
+          pl.setLatLngs(isGcj ? pl._gcjCoords : pl._wgsCoords);
+        });
+        markers.forEach(function(m) {
+          m.setLatLng(isGcj ? m._gcjCoord : m._wgsCoord);
+        });
+        if (polylines.length > 0) {
+          map.fitBounds(polylines[0].getBounds(), { padding: [24, 24] });
+        }
+      }
+
+      // 默认使用的是高德地图，初始转换为 GCJ-02 贴合路网
+      applyCoordinateSystem(true);
+
+      map.on('baselayerchange', function(e) {
+        var isAmap = e.name && e.name.indexOf('高德') !== -1;
+        applyCoordinateSystem(isAmap);
+      });
+
       setTimeout(function() { map.invalidateSize(); }, 200);
 
       var dist = (gpx.get_distance() / 1000).toFixed(2);
@@ -382,11 +551,11 @@ if (true) {
         stats += '<div class="gpx-stat-item"><span class="gpx-stat-label">⏱️ 运动用时:</span> <span class="gpx-stat-value">' + timeStr + '</span></div>';
       }
 
-      var infoEl = document.getElementById('gpx_mnrjnu0_info');
+      var infoEl = document.getElementById('gpx_fa2zgfo_info');
       if (infoEl) infoEl.innerHTML = stats;
     }).on('error', function(err) {
       console.warn('GPX load error:', err);
-      var infoEl = document.getElementById('gpx_mnrjnu0_info');
+      var infoEl = document.getElementById('gpx_fa2zgfo_info');
       if (infoEl) {
         infoEl.innerHTML = '<span style="color:#ef4444;">⚠️ 无法读取 GPX 文件，请确认路径是否正确: /gpx/20241221Outdoor_walk.gpx</span>';
       }
@@ -406,10 +575,10 @@ if (true) {
 <!-- ![](https://www.jiangrdnuc.top/wp-content/uploads/2026/08/IMG_20241221_173955-1024x768.jpg) -->
 <p>终于天完全黑了，我拿出了手电筒，很搞笑的是手电没有备用电池，就硬顶。那个时候体力也基本透支了，从开始爬坡开始就变成走一会休息一会了，其实我当时最担心的是有野兽出没，因为这边有野猪和蛇可太正常了。话说我好像还真看到了一只白色狐狸，当时想的好险不是什么野兽。在走的时候，因为这个郊野径实在是野了点。路边的草还很密，我走的时候就能听见草丛里稀稀疏疏的声音……各种不安的因素叠加起来了。就这样在全黑仅靠手电的情况下走到了七点多的时候到了石峡岭，算是从山上撤下来了。跟着高德的卫星图走想到大路上（当时地图上没有公路，只能跟着滴地形地貌走），然后发现本来应该有路的地方被建筑堵死了。那是个工棚，好歹算有个人了，问了下，还得绕路。这个时候已经走了17公里。根据问路的结果，我往大路方向走，然后有个岔路我走错了两次，对，是往复，因为正确的那条路有好几只狗，没牵绳的那种，我一靠近就冲我叫，甚至我都没看到狗在哪。从错误的路又走了两次，感觉走不出去了，我当时绝望到了顶点，都想着到那个工棚问问能不能在那过个夜等天明了再绕路出去。在我第三次尝试的时候，狗叫成功地把那条路上一个板房中的人给吵到了，那人出门查看，我上前顺势问路，我说要借过一下，那人说走就行了，顺着这条路就能出去了，随后我真就顺着那条路上到了大路上，随后打车回学校。<br>后面回想起那天的经历都很后怕，但凡有一点偏差我可能就废了。比如我没带手电，比如我没有补给，比如手机没信号，我试过，在山里使用手台是无法与任何一个东莞和深圳的中继通信，再比如我要遇到了野兽……那天最绝望的是天黑之后望着远方城市的光亮在无人的山里前进，而前路并不可知……</p>
 <h2 id="塘朗山徒步-鲲鹏径7段-鲲鹏径8段-部分"><a href="#塘朗山徒步-鲲鹏径7段-鲲鹏径8段-部分" class="headerlink" title="塘朗山徒步 鲲鹏径7段+鲲鹏径8段(部分)"></a>塘朗山徒步 鲲鹏径7段+鲲鹏径8段(部分)</h2>
-<div class="gpx-card" id="gpx_yudscvu_wrap">
+<div class="gpx-card" id="gpx_o0yiiou_wrap">
   <div class="gpx-header"><span class="gpx-title">📍 塘朗山徒步 鲲鹏径7段+鲲鹏径8段(部分)</span></div>
-  <div id="gpx_yudscvu_map" class="gpx-map" style="height: 450px;"></div>
-  <div id="gpx_yudscvu_info" class="gpx-info">
+  <div id="gpx_o0yiiou_map" class="gpx-map" style="height: 450px;"></div>
+  <div id="gpx_o0yiiou_info" class="gpx-info">
     <span class="gpx-loading">⏳ 正在解析并加载轨迹数据...</span>
   </div>
 </div>
@@ -460,6 +629,14 @@ if (true) {
   font-weight: 600;
   color: #3b82f6;
 }
+.leaflet-control-layers {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+}
 [data-theme="dark"] .gpx-card {
   border-color: rgba(255, 255, 255, 0.1);
   background: #1e1e1e;
@@ -470,10 +647,48 @@ if (true) {
   border-color: rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
 }
+[data-theme="dark"] .leaflet-control-layers {
+  background: #252526 !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .leaflet-control-layers label {
+  color: #e0e0e0 !important;
+}
 </style>
 
 <script data-pjax>
 (function() {
+  // WGS-84 to GCJ-02 (Mars Coordinates) for accurate alignment on AMap
+  function wgs84ToGcj02(lat, lng) {
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+    if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lat, lng];
+    var dlat = transformLat(lng - 105.0, lat - 35.0);
+    var dlng = transformLng(lng - 105.0, lat - 35.0);
+    var radlat = (lat / 180.0) * Math.PI;
+    var magic = Math.sin(radlat);
+    magic = 1 - ee * magic * magic;
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / (((a * (1 - ee)) / (magic * sqrtmagic)) * Math.PI);
+    dlng = (dlng * 180.0) / ((a / sqrtmagic) * Math.cos(radlat) * Math.PI);
+    return [lat + dlat, lng + dlng];
+  }
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+    return ret;
+  }
+
   function loadDeps(cb) {
     if (window.L && window.L.GPX) return cb();
     window.__gpxCallbacks = window.__gpxCallbacks || [];
@@ -517,22 +732,88 @@ if (true) {
   }
 
   function renderMap() {
-    var container = document.getElementById('gpx_yudscvu_map');
+    var container = document.getElementById('gpx_o0yiiou_map');
     if (!container) return;
     if (container._leaflet_id) {
       container._leaflet_id = null;
     }
 
-    var map = L.map('gpx_yudscvu_map', {
+    // Bing Maps TileLayer definition
+    if (!L.TileLayer.Bing) {
+      L.TileLayer.Bing = L.TileLayer.extend({
+        getTileUrl: function(coords) {
+          var quadkey = '';
+          for (var i = coords.z; i > 0; i--) {
+            var digit = 0;
+            var mask = 1 << (i - 1);
+            if ((coords.x & mask) !== 0) digit++;
+            if ((coords.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          var sub = Math.abs(coords.x + coords.y) % 4;
+          return this.options.urlPattern.replace('{s}', sub).replace('{q}', quadkey);
+        }
+      });
+      L.tileLayer.bing = function(urlPattern, options) {
+        return new L.TileLayer.Bing(null, Object.assign({ urlPattern: urlPattern }, options));
+      };
+    }
+
+    var map = L.map('gpx_o0yiiou_map', {
       scrollWheelZoom: false,
       zoomControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    // 1. 高德街道地图 (默认)
+    var amapRoad = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图'
+    });
+
+    // 2. 高德卫星影像 + 路网标注
+    var amapSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德卫星'
+    });
+    var amapSatLabel = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18
+    });
+    var amapSatGroup = L.layerGroup([amapSat, amapSatLabel]);
+
+    // 3. 必应卫星地图
+    var bingAerial = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=129', {
+      maxZoom: 19,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 4. 必应街道地图
+    var bingRoad = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/r{q}.jpeg?g=129&mkt=zh-CN', {
+      maxZoom: 18,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 5. OpenStreetMap
+    var osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    // 默认启用高德街道图
+    amapRoad.addTo(map);
+
+    // 图层切换控件
+    var baseMaps = {
+      '🗺️ 高德街道': amapRoad,
+      '🛰️ 高德卫星': amapSatGroup,
+      '🛰️ 必应卫星': bingAerial,
+      '🗺️ 必应街道': bingRoad,
+      '🌐 OpenStreetMap': osm
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(map);
 
     new L.GPX('/gpx/20250222Mountain_hike.gpx', {
       async: true,
@@ -550,7 +831,64 @@ if (true) {
       }
     }).on('loaded', function(e) {
       var gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [24, 24] });
+
+      var polylines = [];
+      var markers = [];
+
+      function collectLayers(target) {
+        if (target instanceof L.Polyline) {
+          polylines.push(target);
+        } else if (target instanceof L.Marker) {
+          markers.push(target);
+        } else if (target && target.eachLayer) {
+          target.eachLayer(collectLayers);
+        }
+      }
+      collectLayers(gpx);
+
+      function mapCoords(pts) {
+        if (!pts || !pts.length) return pts;
+        if (Array.isArray(pts[0])) return pts.map(mapCoords);
+        return pts.map(function(p) {
+          var c = wgs84ToGcj02(p.lat, p.lng);
+          return L.latLng(c[0], c[1], p.alt);
+        });
+      }
+
+      polylines.forEach(function(pl) {
+        pl._wgsCoords = pl.getLatLngs();
+        pl._gcjCoords = mapCoords(pl._wgsCoords);
+      });
+
+      markers.forEach(function(m) {
+        m._wgsCoord = m.getLatLng();
+        var mc = wgs84ToGcj02(m._wgsCoord.lat, m._wgsCoord.lng);
+        m._gcjCoord = L.latLng(mc[0], mc[1]);
+      });
+
+      var currentIsGcj = false;
+      function applyCoordinateSystem(isGcj) {
+        if (currentIsGcj === isGcj) return;
+        currentIsGcj = isGcj;
+        polylines.forEach(function(pl) {
+          pl.setLatLngs(isGcj ? pl._gcjCoords : pl._wgsCoords);
+        });
+        markers.forEach(function(m) {
+          m.setLatLng(isGcj ? m._gcjCoord : m._wgsCoord);
+        });
+        if (polylines.length > 0) {
+          map.fitBounds(polylines[0].getBounds(), { padding: [24, 24] });
+        }
+      }
+
+      // 默认使用的是高德地图，初始转换为 GCJ-02 贴合路网
+      applyCoordinateSystem(true);
+
+      map.on('baselayerchange', function(e) {
+        var isAmap = e.name && e.name.indexOf('高德') !== -1;
+        applyCoordinateSystem(isAmap);
+      });
+
       setTimeout(function() { map.invalidateSize(); }, 200);
 
       var dist = (gpx.get_distance() / 1000).toFixed(2);
@@ -581,11 +919,11 @@ if (true) {
         stats += '<div class="gpx-stat-item"><span class="gpx-stat-label">⏱️ 运动用时:</span> <span class="gpx-stat-value">' + timeStr + '</span></div>';
       }
 
-      var infoEl = document.getElementById('gpx_yudscvu_info');
+      var infoEl = document.getElementById('gpx_o0yiiou_info');
       if (infoEl) infoEl.innerHTML = stats;
     }).on('error', function(err) {
       console.warn('GPX load error:', err);
-      var infoEl = document.getElementById('gpx_yudscvu_info');
+      var infoEl = document.getElementById('gpx_o0yiiou_info');
       if (infoEl) {
         infoEl.innerHTML = '<span style="color:#ef4444;">⚠️ 无法读取 GPX 文件，请确认路径是否正确: /gpx/20250222Mountain_hike.gpx</span>';
       }
@@ -602,10 +940,10 @@ if (true) {
 <p>那天出发的时候天气还很一般，本来是想走凤凰径往大岭山方向的，但是看那边的积云很厚，怕下雨就算了。于是往南，梅林方向。从上梅林上去，过了涂鸦墙之后往塘朗方向，这一段一路上坡，很糟糕，没过多久就抽筋了，好在克服克服就过去了，16公里，也还行了。</p>
 <h2 id="梅沙尖徒步-鲲鹏径12段"><a href="#梅沙尖徒步-鲲鹏径12段" class="headerlink" title="梅沙尖徒步 鲲鹏径12段"></a>梅沙尖徒步 鲲鹏径12段</h2><p>五一去的，天气很热，路程也很远。早上八点多不到出门，一路坐地铁加打车，终于在十一点多到了谭仙公庙。然后便一路上山。上上下下翻了两座山，第二座的山顶便是梅沙尖。海拔七百多，是深圳为数不多的高山之一，站在山顶能很好地看到盐田港和远处的大梅沙。路倒是不难走，但是很费体力。本来想把12段走完的，也差不多16公里。但是到12公里，大概是华侨城的时候，水喝完了，就剩一瓶啤酒了，果断下撤，告辞。后面听其他人说12段的难度不算小，我这也还凑合哈哈哈。</p>
 
-<div class="gpx-card" id="gpx_j1y6mvv_wrap">
+<div class="gpx-card" id="gpx_xc60co6_wrap">
   <div class="gpx-header"><span class="gpx-title">📍 梅沙尖徒步 鲲鹏径12段</span></div>
-  <div id="gpx_j1y6mvv_map" class="gpx-map" style="height: 450px;"></div>
-  <div id="gpx_j1y6mvv_info" class="gpx-info">
+  <div id="gpx_xc60co6_map" class="gpx-map" style="height: 450px;"></div>
+  <div id="gpx_xc60co6_info" class="gpx-info">
     <span class="gpx-loading">⏳ 正在解析并加载轨迹数据...</span>
   </div>
 </div>
@@ -656,6 +994,14 @@ if (true) {
   font-weight: 600;
   color: #3b82f6;
 }
+.leaflet-control-layers {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+}
 [data-theme="dark"] .gpx-card {
   border-color: rgba(255, 255, 255, 0.1);
   background: #1e1e1e;
@@ -666,10 +1012,48 @@ if (true) {
   border-color: rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
 }
+[data-theme="dark"] .leaflet-control-layers {
+  background: #252526 !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .leaflet-control-layers label {
+  color: #e0e0e0 !important;
+}
 </style>
 
 <script data-pjax>
 (function() {
+  // WGS-84 to GCJ-02 (Mars Coordinates) for accurate alignment on AMap
+  function wgs84ToGcj02(lat, lng) {
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+    if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lat, lng];
+    var dlat = transformLat(lng - 105.0, lat - 35.0);
+    var dlng = transformLng(lng - 105.0, lat - 35.0);
+    var radlat = (lat / 180.0) * Math.PI;
+    var magic = Math.sin(radlat);
+    magic = 1 - ee * magic * magic;
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / (((a * (1 - ee)) / (magic * sqrtmagic)) * Math.PI);
+    dlng = (dlng * 180.0) / ((a / sqrtmagic) * Math.cos(radlat) * Math.PI);
+    return [lat + dlat, lng + dlng];
+  }
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+    return ret;
+  }
+
   function loadDeps(cb) {
     if (window.L && window.L.GPX) return cb();
     window.__gpxCallbacks = window.__gpxCallbacks || [];
@@ -713,22 +1097,88 @@ if (true) {
   }
 
   function renderMap() {
-    var container = document.getElementById('gpx_j1y6mvv_map');
+    var container = document.getElementById('gpx_xc60co6_map');
     if (!container) return;
     if (container._leaflet_id) {
       container._leaflet_id = null;
     }
 
-    var map = L.map('gpx_j1y6mvv_map', {
+    // Bing Maps TileLayer definition
+    if (!L.TileLayer.Bing) {
+      L.TileLayer.Bing = L.TileLayer.extend({
+        getTileUrl: function(coords) {
+          var quadkey = '';
+          for (var i = coords.z; i > 0; i--) {
+            var digit = 0;
+            var mask = 1 << (i - 1);
+            if ((coords.x & mask) !== 0) digit++;
+            if ((coords.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          var sub = Math.abs(coords.x + coords.y) % 4;
+          return this.options.urlPattern.replace('{s}', sub).replace('{q}', quadkey);
+        }
+      });
+      L.tileLayer.bing = function(urlPattern, options) {
+        return new L.TileLayer.Bing(null, Object.assign({ urlPattern: urlPattern }, options));
+      };
+    }
+
+    var map = L.map('gpx_xc60co6_map', {
       scrollWheelZoom: false,
       zoomControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    // 1. 高德街道地图 (默认)
+    var amapRoad = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图'
+    });
+
+    // 2. 高德卫星影像 + 路网标注
+    var amapSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德卫星'
+    });
+    var amapSatLabel = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18
+    });
+    var amapSatGroup = L.layerGroup([amapSat, amapSatLabel]);
+
+    // 3. 必应卫星地图
+    var bingAerial = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=129', {
+      maxZoom: 19,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 4. 必应街道地图
+    var bingRoad = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/r{q}.jpeg?g=129&mkt=zh-CN', {
+      maxZoom: 18,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 5. OpenStreetMap
+    var osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    // 默认启用高德街道图
+    amapRoad.addTo(map);
+
+    // 图层切换控件
+    var baseMaps = {
+      '🗺️ 高德街道': amapRoad,
+      '🛰️ 高德卫星': amapSatGroup,
+      '🛰️ 必应卫星': bingAerial,
+      '🗺️ 必应街道': bingRoad,
+      '🌐 OpenStreetMap': osm
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(map);
 
     new L.GPX('/gpx/20250502Mountain_hike.gpx', {
       async: true,
@@ -746,7 +1196,64 @@ if (true) {
       }
     }).on('loaded', function(e) {
       var gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [24, 24] });
+
+      var polylines = [];
+      var markers = [];
+
+      function collectLayers(target) {
+        if (target instanceof L.Polyline) {
+          polylines.push(target);
+        } else if (target instanceof L.Marker) {
+          markers.push(target);
+        } else if (target && target.eachLayer) {
+          target.eachLayer(collectLayers);
+        }
+      }
+      collectLayers(gpx);
+
+      function mapCoords(pts) {
+        if (!pts || !pts.length) return pts;
+        if (Array.isArray(pts[0])) return pts.map(mapCoords);
+        return pts.map(function(p) {
+          var c = wgs84ToGcj02(p.lat, p.lng);
+          return L.latLng(c[0], c[1], p.alt);
+        });
+      }
+
+      polylines.forEach(function(pl) {
+        pl._wgsCoords = pl.getLatLngs();
+        pl._gcjCoords = mapCoords(pl._wgsCoords);
+      });
+
+      markers.forEach(function(m) {
+        m._wgsCoord = m.getLatLng();
+        var mc = wgs84ToGcj02(m._wgsCoord.lat, m._wgsCoord.lng);
+        m._gcjCoord = L.latLng(mc[0], mc[1]);
+      });
+
+      var currentIsGcj = false;
+      function applyCoordinateSystem(isGcj) {
+        if (currentIsGcj === isGcj) return;
+        currentIsGcj = isGcj;
+        polylines.forEach(function(pl) {
+          pl.setLatLngs(isGcj ? pl._gcjCoords : pl._wgsCoords);
+        });
+        markers.forEach(function(m) {
+          m.setLatLng(isGcj ? m._gcjCoord : m._wgsCoord);
+        });
+        if (polylines.length > 0) {
+          map.fitBounds(polylines[0].getBounds(), { padding: [24, 24] });
+        }
+      }
+
+      // 默认使用的是高德地图，初始转换为 GCJ-02 贴合路网
+      applyCoordinateSystem(true);
+
+      map.on('baselayerchange', function(e) {
+        var isAmap = e.name && e.name.indexOf('高德') !== -1;
+        applyCoordinateSystem(isAmap);
+      });
+
       setTimeout(function() { map.invalidateSize(); }, 200);
 
       var dist = (gpx.get_distance() / 1000).toFixed(2);
@@ -777,11 +1284,11 @@ if (true) {
         stats += '<div class="gpx-stat-item"><span class="gpx-stat-label">⏱️ 运动用时:</span> <span class="gpx-stat-value">' + timeStr + '</span></div>';
       }
 
-      var infoEl = document.getElementById('gpx_j1y6mvv_info');
+      var infoEl = document.getElementById('gpx_xc60co6_info');
       if (infoEl) infoEl.innerHTML = stats;
     }).on('error', function(err) {
       console.warn('GPX load error:', err);
-      var infoEl = document.getElementById('gpx_j1y6mvv_info');
+      var infoEl = document.getElementById('gpx_xc60co6_info');
       if (infoEl) {
         infoEl.innerHTML = '<span style="color:#ef4444;">⚠️ 无法读取 GPX 文件，请确认路径是否正确: /gpx/20250502Mountain_hike.gpx</span>';
       }
@@ -811,10 +1318,10 @@ if (true) {
 ### 重走
 时隔8个月后，重走这条线，还好，这次没有遇到奇奇怪怪的动物。
 
-<div class="gpx-card" id="gpx_nxof3z3_wrap">
+<div class="gpx-card" id="gpx_1zpv39e_wrap">
   <div class="gpx-header"><span class="gpx-title">📍 凤凰径1段重走</span></div>
-  <div id="gpx_nxof3z3_map" class="gpx-map" style="height: 450px;"></div>
-  <div id="gpx_nxof3z3_info" class="gpx-info">
+  <div id="gpx_1zpv39e_map" class="gpx-map" style="height: 450px;"></div>
+  <div id="gpx_1zpv39e_info" class="gpx-info">
     <span class="gpx-loading">⏳ 正在解析并加载轨迹数据...</span>
   </div>
 </div>
@@ -865,6 +1372,14 @@ if (true) {
   font-weight: 600;
   color: #3b82f6;
 }
+.leaflet-control-layers {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+}
 [data-theme="dark"] .gpx-card {
   border-color: rgba(255, 255, 255, 0.1);
   background: #1e1e1e;
@@ -875,10 +1390,48 @@ if (true) {
   border-color: rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
 }
+[data-theme="dark"] .leaflet-control-layers {
+  background: #252526 !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .leaflet-control-layers label {
+  color: #e0e0e0 !important;
+}
 </style>
 
 <script data-pjax>
 (function() {
+  // WGS-84 to GCJ-02 (Mars Coordinates) for accurate alignment on AMap
+  function wgs84ToGcj02(lat, lng) {
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+    if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lat, lng];
+    var dlat = transformLat(lng - 105.0, lat - 35.0);
+    var dlng = transformLng(lng - 105.0, lat - 35.0);
+    var radlat = (lat / 180.0) * Math.PI;
+    var magic = Math.sin(radlat);
+    magic = 1 - ee * magic * magic;
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / (((a * (1 - ee)) / (magic * sqrtmagic)) * Math.PI);
+    dlng = (dlng * 180.0) / ((a / sqrtmagic) * Math.cos(radlat) * Math.PI);
+    return [lat + dlat, lng + dlng];
+  }
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+    return ret;
+  }
+
   function loadDeps(cb) {
     if (window.L && window.L.GPX) return cb();
     window.__gpxCallbacks = window.__gpxCallbacks || [];
@@ -922,22 +1475,88 @@ if (true) {
   }
 
   function renderMap() {
-    var container = document.getElementById('gpx_nxof3z3_map');
+    var container = document.getElementById('gpx_1zpv39e_map');
     if (!container) return;
     if (container._leaflet_id) {
       container._leaflet_id = null;
     }
 
-    var map = L.map('gpx_nxof3z3_map', {
+    // Bing Maps TileLayer definition
+    if (!L.TileLayer.Bing) {
+      L.TileLayer.Bing = L.TileLayer.extend({
+        getTileUrl: function(coords) {
+          var quadkey = '';
+          for (var i = coords.z; i > 0; i--) {
+            var digit = 0;
+            var mask = 1 << (i - 1);
+            if ((coords.x & mask) !== 0) digit++;
+            if ((coords.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          var sub = Math.abs(coords.x + coords.y) % 4;
+          return this.options.urlPattern.replace('{s}', sub).replace('{q}', quadkey);
+        }
+      });
+      L.tileLayer.bing = function(urlPattern, options) {
+        return new L.TileLayer.Bing(null, Object.assign({ urlPattern: urlPattern }, options));
+      };
+    }
+
+    var map = L.map('gpx_1zpv39e_map', {
       scrollWheelZoom: false,
       zoomControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    // 1. 高德街道地图 (默认)
+    var amapRoad = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图'
+    });
+
+    // 2. 高德卫星影像 + 路网标注
+    var amapSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德卫星'
+    });
+    var amapSatLabel = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18
+    });
+    var amapSatGroup = L.layerGroup([amapSat, amapSatLabel]);
+
+    // 3. 必应卫星地图
+    var bingAerial = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=129', {
+      maxZoom: 19,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 4. 必应街道地图
+    var bingRoad = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/r{q}.jpeg?g=129&mkt=zh-CN', {
+      maxZoom: 18,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 5. OpenStreetMap
+    var osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    // 默认启用高德街道图
+    amapRoad.addTo(map);
+
+    // 图层切换控件
+    var baseMaps = {
+      '🗺️ 高德街道': amapRoad,
+      '🛰️ 高德卫星': amapSatGroup,
+      '🛰️ 必应卫星': bingAerial,
+      '🗺️ 必应街道': bingRoad,
+      '🌐 OpenStreetMap': osm
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(map);
 
     new L.GPX('/gpx/20260207Hike.gpx', {
       async: true,
@@ -955,7 +1574,64 @@ if (true) {
       }
     }).on('loaded', function(e) {
       var gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [24, 24] });
+
+      var polylines = [];
+      var markers = [];
+
+      function collectLayers(target) {
+        if (target instanceof L.Polyline) {
+          polylines.push(target);
+        } else if (target instanceof L.Marker) {
+          markers.push(target);
+        } else if (target && target.eachLayer) {
+          target.eachLayer(collectLayers);
+        }
+      }
+      collectLayers(gpx);
+
+      function mapCoords(pts) {
+        if (!pts || !pts.length) return pts;
+        if (Array.isArray(pts[0])) return pts.map(mapCoords);
+        return pts.map(function(p) {
+          var c = wgs84ToGcj02(p.lat, p.lng);
+          return L.latLng(c[0], c[1], p.alt);
+        });
+      }
+
+      polylines.forEach(function(pl) {
+        pl._wgsCoords = pl.getLatLngs();
+        pl._gcjCoords = mapCoords(pl._wgsCoords);
+      });
+
+      markers.forEach(function(m) {
+        m._wgsCoord = m.getLatLng();
+        var mc = wgs84ToGcj02(m._wgsCoord.lat, m._wgsCoord.lng);
+        m._gcjCoord = L.latLng(mc[0], mc[1]);
+      });
+
+      var currentIsGcj = false;
+      function applyCoordinateSystem(isGcj) {
+        if (currentIsGcj === isGcj) return;
+        currentIsGcj = isGcj;
+        polylines.forEach(function(pl) {
+          pl.setLatLngs(isGcj ? pl._gcjCoords : pl._wgsCoords);
+        });
+        markers.forEach(function(m) {
+          m.setLatLng(isGcj ? m._gcjCoord : m._wgsCoord);
+        });
+        if (polylines.length > 0) {
+          map.fitBounds(polylines[0].getBounds(), { padding: [24, 24] });
+        }
+      }
+
+      // 默认使用的是高德地图，初始转换为 GCJ-02 贴合路网
+      applyCoordinateSystem(true);
+
+      map.on('baselayerchange', function(e) {
+        var isAmap = e.name && e.name.indexOf('高德') !== -1;
+        applyCoordinateSystem(isAmap);
+      });
+
       setTimeout(function() { map.invalidateSize(); }, 200);
 
       var dist = (gpx.get_distance() / 1000).toFixed(2);
@@ -986,11 +1662,11 @@ if (true) {
         stats += '<div class="gpx-stat-item"><span class="gpx-stat-label">⏱️ 运动用时:</span> <span class="gpx-stat-value">' + timeStr + '</span></div>';
       }
 
-      var infoEl = document.getElementById('gpx_nxof3z3_info');
+      var infoEl = document.getElementById('gpx_1zpv39e_info');
       if (infoEl) infoEl.innerHTML = stats;
     }).on('error', function(err) {
       console.warn('GPX load error:', err);
-      var infoEl = document.getElementById('gpx_nxof3z3_info');
+      var infoEl = document.getElementById('gpx_1zpv39e_info');
       if (infoEl) {
         infoEl.innerHTML = '<span style="color:#ef4444;">⚠️ 无法读取 GPX 文件，请确认路径是否正确: /gpx/20260207Hike.gpx</span>';
       }
@@ -1005,10 +1681,10 @@ if (true) {
 
 <h2 id="鲲鹏径16段"><a href="#鲲鹏径16段" class="headerlink" title="鲲鹏径16段"></a>鲲鹏径16段</h2><p>这是走过的最美的一段了，山与海的同行，难度不大，但是很美。</p>
 
-<div class="gpx-card" id="gpx_0op0j2i_wrap">
+<div class="gpx-card" id="gpx_iyldn9t_wrap">
   <div class="gpx-header"><span class="gpx-title">📍 鲲鹏径16段</span></div>
-  <div id="gpx_0op0j2i_map" class="gpx-map" style="height: 450px;"></div>
-  <div id="gpx_0op0j2i_info" class="gpx-info">
+  <div id="gpx_iyldn9t_map" class="gpx-map" style="height: 450px;"></div>
+  <div id="gpx_iyldn9t_info" class="gpx-info">
     <span class="gpx-loading">⏳ 正在解析并加载轨迹数据...</span>
   </div>
 </div>
@@ -1059,6 +1735,14 @@ if (true) {
   font-weight: 600;
   color: #3b82f6;
 }
+.leaflet-control-layers {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+}
 [data-theme="dark"] .gpx-card {
   border-color: rgba(255, 255, 255, 0.1);
   background: #1e1e1e;
@@ -1069,10 +1753,48 @@ if (true) {
   border-color: rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
 }
+[data-theme="dark"] .leaflet-control-layers {
+  background: #252526 !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .leaflet-control-layers label {
+  color: #e0e0e0 !important;
+}
 </style>
 
 <script data-pjax>
 (function() {
+  // WGS-84 to GCJ-02 (Mars Coordinates) for accurate alignment on AMap
+  function wgs84ToGcj02(lat, lng) {
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+    if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lat, lng];
+    var dlat = transformLat(lng - 105.0, lat - 35.0);
+    var dlng = transformLng(lng - 105.0, lat - 35.0);
+    var radlat = (lat / 180.0) * Math.PI;
+    var magic = Math.sin(radlat);
+    magic = 1 - ee * magic * magic;
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / (((a * (1 - ee)) / (magic * sqrtmagic)) * Math.PI);
+    dlng = (dlng * 180.0) / ((a / sqrtmagic) * Math.cos(radlat) * Math.PI);
+    return [lat + dlat, lng + dlng];
+  }
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+    return ret;
+  }
+
   function loadDeps(cb) {
     if (window.L && window.L.GPX) return cb();
     window.__gpxCallbacks = window.__gpxCallbacks || [];
@@ -1116,22 +1838,88 @@ if (true) {
   }
 
   function renderMap() {
-    var container = document.getElementById('gpx_0op0j2i_map');
+    var container = document.getElementById('gpx_iyldn9t_map');
     if (!container) return;
     if (container._leaflet_id) {
       container._leaflet_id = null;
     }
 
-    var map = L.map('gpx_0op0j2i_map', {
+    // Bing Maps TileLayer definition
+    if (!L.TileLayer.Bing) {
+      L.TileLayer.Bing = L.TileLayer.extend({
+        getTileUrl: function(coords) {
+          var quadkey = '';
+          for (var i = coords.z; i > 0; i--) {
+            var digit = 0;
+            var mask = 1 << (i - 1);
+            if ((coords.x & mask) !== 0) digit++;
+            if ((coords.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          var sub = Math.abs(coords.x + coords.y) % 4;
+          return this.options.urlPattern.replace('{s}', sub).replace('{q}', quadkey);
+        }
+      });
+      L.tileLayer.bing = function(urlPattern, options) {
+        return new L.TileLayer.Bing(null, Object.assign({ urlPattern: urlPattern }, options));
+      };
+    }
+
+    var map = L.map('gpx_iyldn9t_map', {
       scrollWheelZoom: false,
       zoomControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    // 1. 高德街道地图 (默认)
+    var amapRoad = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图'
+    });
+
+    // 2. 高德卫星影像 + 路网标注
+    var amapSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德卫星'
+    });
+    var amapSatLabel = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18
+    });
+    var amapSatGroup = L.layerGroup([amapSat, amapSatLabel]);
+
+    // 3. 必应卫星地图
+    var bingAerial = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=129', {
+      maxZoom: 19,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 4. 必应街道地图
+    var bingRoad = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/r{q}.jpeg?g=129&mkt=zh-CN', {
+      maxZoom: 18,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 5. OpenStreetMap
+    var osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    // 默认启用高德街道图
+    amapRoad.addTo(map);
+
+    // 图层切换控件
+    var baseMaps = {
+      '🗺️ 高德街道': amapRoad,
+      '🛰️ 高德卫星': amapSatGroup,
+      '🛰️ 必应卫星': bingAerial,
+      '🗺️ 必应街道': bingRoad,
+      '🌐 OpenStreetMap': osm
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(map);
 
     new L.GPX('/gpx/20251129Hike.gpx', {
       async: true,
@@ -1149,7 +1937,64 @@ if (true) {
       }
     }).on('loaded', function(e) {
       var gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [24, 24] });
+
+      var polylines = [];
+      var markers = [];
+
+      function collectLayers(target) {
+        if (target instanceof L.Polyline) {
+          polylines.push(target);
+        } else if (target instanceof L.Marker) {
+          markers.push(target);
+        } else if (target && target.eachLayer) {
+          target.eachLayer(collectLayers);
+        }
+      }
+      collectLayers(gpx);
+
+      function mapCoords(pts) {
+        if (!pts || !pts.length) return pts;
+        if (Array.isArray(pts[0])) return pts.map(mapCoords);
+        return pts.map(function(p) {
+          var c = wgs84ToGcj02(p.lat, p.lng);
+          return L.latLng(c[0], c[1], p.alt);
+        });
+      }
+
+      polylines.forEach(function(pl) {
+        pl._wgsCoords = pl.getLatLngs();
+        pl._gcjCoords = mapCoords(pl._wgsCoords);
+      });
+
+      markers.forEach(function(m) {
+        m._wgsCoord = m.getLatLng();
+        var mc = wgs84ToGcj02(m._wgsCoord.lat, m._wgsCoord.lng);
+        m._gcjCoord = L.latLng(mc[0], mc[1]);
+      });
+
+      var currentIsGcj = false;
+      function applyCoordinateSystem(isGcj) {
+        if (currentIsGcj === isGcj) return;
+        currentIsGcj = isGcj;
+        polylines.forEach(function(pl) {
+          pl.setLatLngs(isGcj ? pl._gcjCoords : pl._wgsCoords);
+        });
+        markers.forEach(function(m) {
+          m.setLatLng(isGcj ? m._gcjCoord : m._wgsCoord);
+        });
+        if (polylines.length > 0) {
+          map.fitBounds(polylines[0].getBounds(), { padding: [24, 24] });
+        }
+      }
+
+      // 默认使用的是高德地图，初始转换为 GCJ-02 贴合路网
+      applyCoordinateSystem(true);
+
+      map.on('baselayerchange', function(e) {
+        var isAmap = e.name && e.name.indexOf('高德') !== -1;
+        applyCoordinateSystem(isAmap);
+      });
+
       setTimeout(function() { map.invalidateSize(); }, 200);
 
       var dist = (gpx.get_distance() / 1000).toFixed(2);
@@ -1180,11 +2025,11 @@ if (true) {
         stats += '<div class="gpx-stat-item"><span class="gpx-stat-label">⏱️ 运动用时:</span> <span class="gpx-stat-value">' + timeStr + '</span></div>';
       }
 
-      var infoEl = document.getElementById('gpx_0op0j2i_info');
+      var infoEl = document.getElementById('gpx_iyldn9t_info');
       if (infoEl) infoEl.innerHTML = stats;
     }).on('error', function(err) {
       console.warn('GPX load error:', err);
-      var infoEl = document.getElementById('gpx_0op0j2i_info');
+      var infoEl = document.getElementById('gpx_iyldn9t_info');
       if (infoEl) {
         infoEl.innerHTML = '<span style="color:#ef4444;">⚠️ 无法读取 GPX 文件，请确认路径是否正确: /gpx/20251129Hike.gpx</span>';
       }
@@ -1209,10 +2054,10 @@ if (true) {
 
 <h2 id="鲲鹏径8段"><a href="#鲲鹏径8段" class="headerlink" title="鲲鹏径8段"></a>鲲鹏径8段</h2><p>最近的一次徒步，路线是走得最难受的，也不算难受吧，就是基本到极限的程度。19公里，以往的徒步中，有这距离的没这爬升多，有这爬升的没这么远，累计爬升比去趟梧桐山都高。就不断地上去下来上去下来，如此往复。以至于到后面看到爬升都害怕了。</p>
 
-<div class="gpx-card" id="gpx_q7926z6_wrap">
+<div class="gpx-card" id="gpx_i4rx6q9_wrap">
   <div class="gpx-header"><span class="gpx-title">📍 鲲鹏径8段</span></div>
-  <div id="gpx_q7926z6_map" class="gpx-map" style="height: 450px;"></div>
-  <div id="gpx_q7926z6_info" class="gpx-info">
+  <div id="gpx_i4rx6q9_map" class="gpx-map" style="height: 450px;"></div>
+  <div id="gpx_i4rx6q9_info" class="gpx-info">
     <span class="gpx-loading">⏳ 正在解析并加载轨迹数据...</span>
   </div>
 </div>
@@ -1263,6 +2108,14 @@ if (true) {
   font-weight: 600;
   color: #3b82f6;
 }
+.leaflet-control-layers {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  line-height: 1.5 !important;
+}
 [data-theme="dark"] .gpx-card {
   border-color: rgba(255, 255, 255, 0.1);
   background: #1e1e1e;
@@ -1273,10 +2126,48 @@ if (true) {
   border-color: rgba(255, 255, 255, 0.08);
   color: #e0e0e0;
 }
+[data-theme="dark"] .leaflet-control-layers {
+  background: #252526 !important;
+  color: #e0e0e0 !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .leaflet-control-layers label {
+  color: #e0e0e0 !important;
+}
 </style>
 
 <script data-pjax>
 (function() {
+  // WGS-84 to GCJ-02 (Mars Coordinates) for accurate alignment on AMap
+  function wgs84ToGcj02(lat, lng) {
+    var a = 6378245.0;
+    var ee = 0.00669342162296594323;
+    if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lat, lng];
+    var dlat = transformLat(lng - 105.0, lat - 35.0);
+    var dlng = transformLng(lng - 105.0, lat - 35.0);
+    var radlat = (lat / 180.0) * Math.PI;
+    var magic = Math.sin(radlat);
+    magic = 1 - ee * magic * magic;
+    var sqrtmagic = Math.sqrt(magic);
+    dlat = (dlat * 180.0) / (((a * (1 - ee)) / (magic * sqrtmagic)) * Math.PI);
+    dlng = (dlng * 180.0) / ((a / sqrtmagic) * Math.cos(radlat) * Math.PI);
+    return [lat + dlat, lng + dlng];
+  }
+  function transformLat(x, y) {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin((y / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((160.0 * Math.sin((y / 12.0) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30.0)) * 2.0) / 3.0;
+    return ret;
+  }
+  function transformLng(x, y) {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;
+    ret += ((20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin((x / 3.0) * Math.PI)) * 2.0) / 3.0;
+    ret += ((150.0 * Math.sin((x / 12.0) * Math.PI) + 300.0 * Math.sin((x / 30.0) * Math.PI)) * 2.0) / 3.0;
+    return ret;
+  }
+
   function loadDeps(cb) {
     if (window.L && window.L.GPX) return cb();
     window.__gpxCallbacks = window.__gpxCallbacks || [];
@@ -1320,22 +2211,88 @@ if (true) {
   }
 
   function renderMap() {
-    var container = document.getElementById('gpx_q7926z6_map');
+    var container = document.getElementById('gpx_i4rx6q9_map');
     if (!container) return;
     if (container._leaflet_id) {
       container._leaflet_id = null;
     }
 
-    var map = L.map('gpx_q7926z6_map', {
+    // Bing Maps TileLayer definition
+    if (!L.TileLayer.Bing) {
+      L.TileLayer.Bing = L.TileLayer.extend({
+        getTileUrl: function(coords) {
+          var quadkey = '';
+          for (var i = coords.z; i > 0; i--) {
+            var digit = 0;
+            var mask = 1 << (i - 1);
+            if ((coords.x & mask) !== 0) digit++;
+            if ((coords.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          var sub = Math.abs(coords.x + coords.y) % 4;
+          return this.options.urlPattern.replace('{s}', sub).replace('{q}', quadkey);
+        }
+      });
+      L.tileLayer.bing = function(urlPattern, options) {
+        return new L.TileLayer.Bing(null, Object.assign({ urlPattern: urlPattern }, options));
+      };
+    }
+
+    var map = L.map('gpx_i4rx6q9_map', {
       scrollWheelZoom: false,
       zoomControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    // 1. 高德街道地图 (默认)
+    var amapRoad = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图'
+    });
+
+    // 2. 高德卫星影像 + 路网标注
+    var amapSat = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德卫星'
+    });
+    var amapSatLabel = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18
+    });
+    var amapSatGroup = L.layerGroup([amapSat, amapSatLabel]);
+
+    // 3. 必应卫星地图
+    var bingAerial = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=129', {
+      maxZoom: 19,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 4. 必应街道地图
+    var bingRoad = L.tileLayer.bing('https://ecn.t{s}.tiles.virtualearth.net/tiles/r{q}.jpeg?g=129&mkt=zh-CN', {
+      maxZoom: 18,
+      attribution: '&copy; Microsoft Bing'
+    });
+
+    // 5. OpenStreetMap
+    var osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd',
-      maxZoom: 19
-    }).addTo(map);
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    });
+
+    // 默认启用高德街道图
+    amapRoad.addTo(map);
+
+    // 图层切换控件
+    var baseMaps = {
+      '🗺️ 高德街道': amapRoad,
+      '🛰️ 高德卫星': amapSatGroup,
+      '🛰️ 必应卫星': bingAerial,
+      '🗺️ 必应街道': bingRoad,
+      '🌐 OpenStreetMap': osm
+    };
+    L.control.layers(baseMaps, null, { position: 'topright', collapsed: true }).addTo(map);
 
     new L.GPX('/gpx/20260110Hike.gpx', {
       async: true,
@@ -1353,7 +2310,64 @@ if (true) {
       }
     }).on('loaded', function(e) {
       var gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [24, 24] });
+
+      var polylines = [];
+      var markers = [];
+
+      function collectLayers(target) {
+        if (target instanceof L.Polyline) {
+          polylines.push(target);
+        } else if (target instanceof L.Marker) {
+          markers.push(target);
+        } else if (target && target.eachLayer) {
+          target.eachLayer(collectLayers);
+        }
+      }
+      collectLayers(gpx);
+
+      function mapCoords(pts) {
+        if (!pts || !pts.length) return pts;
+        if (Array.isArray(pts[0])) return pts.map(mapCoords);
+        return pts.map(function(p) {
+          var c = wgs84ToGcj02(p.lat, p.lng);
+          return L.latLng(c[0], c[1], p.alt);
+        });
+      }
+
+      polylines.forEach(function(pl) {
+        pl._wgsCoords = pl.getLatLngs();
+        pl._gcjCoords = mapCoords(pl._wgsCoords);
+      });
+
+      markers.forEach(function(m) {
+        m._wgsCoord = m.getLatLng();
+        var mc = wgs84ToGcj02(m._wgsCoord.lat, m._wgsCoord.lng);
+        m._gcjCoord = L.latLng(mc[0], mc[1]);
+      });
+
+      var currentIsGcj = false;
+      function applyCoordinateSystem(isGcj) {
+        if (currentIsGcj === isGcj) return;
+        currentIsGcj = isGcj;
+        polylines.forEach(function(pl) {
+          pl.setLatLngs(isGcj ? pl._gcjCoords : pl._wgsCoords);
+        });
+        markers.forEach(function(m) {
+          m.setLatLng(isGcj ? m._gcjCoord : m._wgsCoord);
+        });
+        if (polylines.length > 0) {
+          map.fitBounds(polylines[0].getBounds(), { padding: [24, 24] });
+        }
+      }
+
+      // 默认使用的是高德地图，初始转换为 GCJ-02 贴合路网
+      applyCoordinateSystem(true);
+
+      map.on('baselayerchange', function(e) {
+        var isAmap = e.name && e.name.indexOf('高德') !== -1;
+        applyCoordinateSystem(isAmap);
+      });
+
       setTimeout(function() { map.invalidateSize(); }, 200);
 
       var dist = (gpx.get_distance() / 1000).toFixed(2);
@@ -1384,11 +2398,11 @@ if (true) {
         stats += '<div class="gpx-stat-item"><span class="gpx-stat-label">⏱️ 运动用时:</span> <span class="gpx-stat-value">' + timeStr + '</span></div>';
       }
 
-      var infoEl = document.getElementById('gpx_q7926z6_info');
+      var infoEl = document.getElementById('gpx_i4rx6q9_info');
       if (infoEl) infoEl.innerHTML = stats;
     }).on('error', function(err) {
       console.warn('GPX load error:', err);
-      var infoEl = document.getElementById('gpx_q7926z6_info');
+      var infoEl = document.getElementById('gpx_i4rx6q9_info');
       if (infoEl) {
         infoEl.innerHTML = '<span style="color:#ef4444;">⚠️ 无法读取 GPX 文件，请确认路径是否正确: /gpx/20260110Hike.gpx</span>';
       }
